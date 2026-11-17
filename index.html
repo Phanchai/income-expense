@@ -70,6 +70,9 @@
   .tabs button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
   .status{font-size:12px;color:var(--muted)}
   .stack{display:flex;flex-direction:column;gap:16px}
+  .btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .btn2{padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--card);cursor:pointer;font-weight:500}
+  .btn2:hover{background:var(--bg)}
   @media (max-width:760px){
     .grid{grid-template-columns:1fr}
     .stats{grid-template-columns:1fr 1fr}
@@ -118,6 +121,16 @@
       <div class="card">
         <h2>รายจ่ายตามหมวดหมู่</h2>
         <div class="bars" id="bars"></div>
+      </div>
+
+      <div class="card">
+        <h2>สำรองข้อมูล (JSON)</h2>
+        <div class="btns">
+          <button type="button" class="btn2" id="exportBtn">⬇️ ส่งออก JSON</button>
+          <button type="button" class="btn2" id="importBtn">⬆️ นำเข้า JSON</button>
+        </div>
+        <input type="file" id="importFile" accept=".json,application/json" hidden>
+        <div class="status" id="ioMsg" style="margin-top:8px">ข้อมูลเก็บในเบราว์เซอร์เครื่องนี้ ควรส่งออกไฟล์ไว้เป็นระยะ</div>
       </div>
     </div>
 
@@ -261,6 +274,34 @@ $("form").onsubmit=e=>{
   addItem({id,type,amount:Math.round(amount*100)/100,cat:$("cat").value,date,note:$("note").value.trim(),ts:Date.now()});
   if(month!=="all" && !date.startsWith(month)){ month=date.slice(0,7); render(); }
   $("amount").value=""; $("note").value=""; $("amount").focus();
+};
+
+/* ---------- JSON export / import ---------- */
+$("exportBtn").onclick=()=>{
+  const data={app:"income-expense",version:1,exportedAt:new Date().toISOString(),items};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="income-expense-"+todayStr()+".json";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  $("ioMsg").textContent="ส่งออก "+items.length+" รายการแล้ว";
+};
+$("importBtn").onclick=()=>$("importFile").click();
+$("importFile").onchange=async e=>{
+  const file=e.target.files[0]; e.target.value=""; if(!file) return;
+  try{
+    const parsed=JSON.parse(await file.text());
+    const arr=Array.isArray(parsed)?parsed:parsed.items;
+    if(!Array.isArray(arr)) throw 0;
+    const valid=arr.filter(x=>x&&typeof x.id==="string"&&(x.type==="inc"||x.type==="exp")
+      &&typeof x.amount==="number"&&x.amount>0&&/^\d{4}-\d{2}-\d{2}$/.test(x.date))
+      .map(x=>({id:x.id,type:x.type,amount:x.amount,cat:String(x.cat||"อื่นๆ"),date:x.date,note:String(x.note||""),ts:Number(x.ts)||0}));
+    const have=new Set(items.map(x=>x.id));
+    const fresh=valid.filter(x=>!have.has(x.id));
+    for(const it of fresh) await addItem(it);
+    $("ioMsg").textContent="นำเข้า "+fresh.length+" รายการ"+(valid.length-fresh.length?" (ข้าม "+(valid.length-fresh.length)+" รายการที่มีอยู่แล้ว)":"");
+  }catch(err){ $("ioMsg").textContent="ไฟล์ไม่ถูกต้อง ต้องเป็นไฟล์ JSON ที่ส่งออกจากโปรแกรมนี้"; }
 };
 
 fillCats();
